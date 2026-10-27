@@ -1,0 +1,9 @@
+# Pinned: MetaPop 1.0+, bowtie2 2.5+, samtools 1.19+ (reference index + remapping).
+name: metapop
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - metapop>=1.0,<2
+  - bowtie2>=2.5,<3
+  - samtools>=1.19,<2

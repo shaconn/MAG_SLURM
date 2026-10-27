@@ -1,0 +1,9 @@
+# Pinned: dRep 3.5+ (skani support required), skani.
+name: drep
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - drep>=3.5,<4
+  - skani
+  - mash

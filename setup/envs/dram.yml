@@ -1,0 +1,7 @@
+# Pinned: DRAM 1.5 (legacy DRAM v1.x).
+name: dram
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - dram>=1.5,<1.6

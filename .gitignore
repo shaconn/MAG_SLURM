@@ -1,0 +1,15 @@
+# Live config is per-user and per-cluster; only the example is committed.
+config/pipeline.conf
+
+# Run artefacts if someone runs from inside the repo
+logs/
+checkpoints/
+*.out
+*.err
+.nextflow/
+.nextflow.log*
+work/
+
+__pycache__/
+*.pyc
+.DS_Store

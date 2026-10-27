@@ -1,0 +1,9 @@
+# Pinned: MetaBAT2 2.15+, bowtie2 2.5+, samtools 1.19+ (self-mapping for depths).
+name: metabat2
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - metabat2>=2.15,<3
+  - bowtie2>=2.5,<3
+  - samtools>=1.19,<2

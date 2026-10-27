@@ -1,0 +1,10 @@
+# Pinned: fastp 0.22+ (legacy 0.22.0), bowtie2 2.5+ (legacy 2.5.2), samtools 1.19+. Also used for host removal and host index builds.
+name: fastp
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - fastp>=0.22,<1
+  - bowtie2>=2.5,<3
+  - samtools>=1.19,<2
+  - pigz

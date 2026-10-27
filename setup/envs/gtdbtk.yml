@@ -1,0 +1,7 @@
+# Pinned: GTDB-Tk 2.7+ (legacy 2.7.2). Requires the matching GTDB release (R226).
+name: gtdbtk
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - gtdbtk>=2.7,<3

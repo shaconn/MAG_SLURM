@@ -1,0 +1,7 @@
+# Pinned: SPAdes 4.2 (legacy 4.2.0). Isolated env: Python version conflicts with the other tools.
+name: spades
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - spades>=4.2,<4.3

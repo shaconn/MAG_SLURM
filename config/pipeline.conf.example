@@ -1,0 +1,127 @@
+#!/usr/bin/env bash
+# ============================================================================
+# MAG_SLURM configuration
+# Copy to config/pipeline.conf and edit. Every value below is required unless
+# marked optional.
+# ============================================================================
+
+# --- Identity ---------------------------------------------------------------
+PROJECT_NAME="MyProject"
+
+# --- Paths ------------------------------------------------------------------
+# PROJECT_ROOT holds all pipeline output. Use scratch — this gets large.
+PROJECT_ROOT="/path/to/scratch/MyProject"
+READ_DIR="${PROJECT_ROOT}/raw_reads"          # input FASTQs live here
+MANIFEST="${PROJECT_ROOT}/manifest.tsv"
+SAMPLE_LIST="${PROJECT_ROOT}/samples.txt"     # derived from MANIFEST, NO header
+OUT_DIR="${PROJECT_ROOT}"
+LOG_DIR="${OUT_DIR}/logs"
+CHECKPOINT_DIR="${OUT_DIR}/checkpoints"
+QC_READ_DIR="${OUT_DIR}/qcreads"
+
+# Parent directory for per-job temporary working directories. Must exist and be
+# writable. Each job creates a mktemp subdirectory here and removes it on exit.
+SCRATCH_ROOT="/path/to/scratch/tmp"
+
+# Root for all reference databases. See setup/download_databases.sh.
+DB_ROOT="/path/to/scratch/databases"
+
+# --- Conda / mamba ----------------------------------------------------------
+CONDA_SH="/path/to/miniconda3/etc/profile.d/conda.sh"
+ENV_PREFIX=""          # optional prefix if envs are namespaced, e.g. "mag_"
+
+# --- SLURM ------------------------------------------------------------------
+SLURM_ACCOUNT="my_account"
+SLURM_PARTITION="my_partition"
+SLURM_MAIL_USER="me@example.edu"
+SLURM_MAIL_TYPE="END,FAIL"
+
+# Concurrent tasks per array job. The legacy pipeline submitted 523 unthrottled
+# 256 GB tasks; do not repeat that.
+ARRAY_THROTTLE=40
+
+# Per-module resources. TIME is SLURM D-HH:MM:SS or HH:MM:SS.
+CPUS_QC_ASSEMBLY=18;   MEM_QC_ASSEMBLY="256G";  TIME_QC_ASSEMBLY="48:00:00"
+CPUS_BINNING=18;       MEM_BINNING="80G";       TIME_BINNING="24:00:00"
+CPUS_PREP_DREP=4;      MEM_PREP_DREP="16G";     TIME_PREP_DREP="04:00:00"
+CPUS_DREP=24;          MEM_DREP="120G";         TIME_DREP="48:00:00"
+CPUS_GTDBTK=24;        MEM_GTDBTK="320G";       TIME_GTDBTK="24:00:00"
+CPUS_DRAM=24;          MEM_DRAM="500G";         TIME_DRAM="120:00:00"
+CPUS_METTANNOTATOR=8;  MEM_METTANNOTATOR="32G"; TIME_METTANNOTATOR="120:00:00"
+CPUS_METAPOP_PREP=8;   MEM_METAPOP_PREP="32G";  TIME_METAPOP_PREP="04:00:00"
+CPUS_METAPOP_REMAP=24; MEM_METAPOP_REMAP="80G"; TIME_METAPOP_REMAP="12:00:00"
+CPUS_METAPOP_RUN=24;   MEM_METAPOP_RUN="200G";  TIME_METAPOP_RUN="24:00:00"
+
+# --- Module toggles ---------------------------------------------------------
+RUN_FASTP=true
+RUN_HOST_REMOVAL=true
+RUN_MICROBECENSUS=true
+RUN_METAPHLAN=true
+RUN_ASSEMBLY=true
+RUN_QUAST=true
+RUN_BINNING=true
+RUN_DREP=true
+RUN_GTDBTK=true
+RUN_METAPOP=true
+
+# Functional annotation: dram | mettannotator | both | none
+ANNOTATION_MODE="both"
+
+KEEP_QC_READS=true
+
+# --- Host removal -----------------------------------------------------------
+# human | mouse | phix | none | custom
+HOST_SPECIES="human"
+# phiX is a sequencing spike-in and is folded into the human and mouse indexes
+# by default. Set false only if you have a reason.
+HOST_INCLUDE_PHIX=true
+# Used only when HOST_SPECIES="custom": bowtie2 index basename.
+HOST_INDEX_CUSTOM=""
+
+# --- fastp ------------------------------------------------------------------
+FASTP_CUT_WINDOW_SIZE=4
+FASTP_CUT_MEAN_QUALITY=20
+FASTP_LENGTH_REQUIRED=60
+FASTP_TRIM_POLY_G=true
+# NOTE: exact-duplicate removal distorts the coverage depth used by MetaBAT2 for
+# binning and by MetaPop for depth/breadth and microdiversity. The legacy
+# pipeline enabled it. Default is now false. Enable only if you understand the
+# downstream effect.
+FASTP_DEDUP=false
+
+# --- MicrobeCensus ----------------------------------------------------------
+# raw | qc  -- average genome size estimation is read-length sensitive and is
+# conventionally run on untrimmed reads. "raw" is the safer default.
+MICROBECENSUS_INPUT="raw"
+
+# --- MetaBAT2 ---------------------------------------------------------------
+METABAT_MIN_CONTIG=2500
+METABAT_MAX_P=95
+METABAT_MIN_S=60
+METABAT_MIN_CV=1
+METABAT_MIN_CLS_SIZE=200000
+
+# --- dRep -------------------------------------------------------------------
+DREP_S_ALGORITHM="skani"
+DREP_PRIMARY_ANI=0.90
+DREP_SECONDARY_ANI=0.95      # species boundary, consistent with GTDB
+DREP_MIN_COVERAGE=0.30
+DREP_MIN_COMPLETENESS=50     # MIMAG medium-quality completeness threshold
+DREP_MAX_CONTAMINATION=10
+# Set true for >5000 input bins. Trades some accuracy for tractable runtime.
+DREP_GREEDY_SECONDARY=true
+DREP_PRIMARY_CHUNKSIZE=5000
+
+# --- mettannotator ----------------------------------------------------------
+METTANNOTATOR_VERSION="1.5.0"        # pinned revision passed to nextflow -r
+METTANNOTATOR_DB="${DB_ROOT}/mettannotator"
+METTANNOTATOR_FAST=false             # --fast skips the slowest steps
+NXF_SINGULARITY_CACHEDIR="${DB_ROOT}/singularity_cache"
+APPTAINER_MODULE="apptainer"         # module name to load on this cluster
+NEXTFLOW_MODULE="nextflow"           # or "" if nextflow is on PATH
+
+# --- MetaPop ----------------------------------------------------------------
+METAPOP_ID_MIN=95
+METAPOP_MIN_COV=20
+METAPOP_MIN_DEP=10
+METAPOP_DELETE_SAM=true
