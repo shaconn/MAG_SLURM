@@ -2,7 +2,9 @@
 
 A config-driven SLURM pipeline that turns paired-end metagenomic FASTQs into
 dereplicated, taxonomically classified, functionally annotated MAGs. Each sample is
-QC'd, host-filtered, profiled and assembled with metaSPAdes. Bins come from
+QC'd, host-filtered, profiled and assembled with metaSPAdes. fastp runs twice:
+once to make the QC reads used for profiling and coverage, and once more to
+deduplicate those reads for assembly only. Bins come from
 MetaBAT2 and are scored with CheckM2. Bins from all samples are dereplicated with
 dRep and classified with GTDB-Tk. The representatives are annotated with DRAM
 and/or mettannotator, and MetaPop can optionally add population-genetics output.
@@ -61,7 +63,8 @@ Every job sources it.
 | `ANNOTATION_MODE` | `dram` \| `mettannotator` \| `both` \| `none` |
 | `KEEP_QC_READS` | Keep post-QC reads (required by 03 and 12) |
 | `HOST_SPECIES`, `HOST_INCLUDE_PHIX`, `HOST_INDEX_CUSTOM` | Host removal index selection |
-| `FASTP_*` | Trimming parameters. `FASTP_DEDUP` defaults to false (dedup distorts coverage) |
+| `FASTP_*` | Trimming parameters for fastp pass 1 (QC reads, never deduplicated) |
+| `FASTP_DEDUP_ASSEMBLY` | `true` (default): fastp pass 2 deduplicates the QC reads for metaSPAdes only |
 | `MICROBECENSUS_INPUT` | `raw` (default) or `qc` reads |
 | `METABAT_*` | MetaBAT2 parameters |
 | `DREP_*` | dRep ANI thresholds, quality filter, greedy clustering |
@@ -74,7 +77,7 @@ Every job sources it.
 |---|---|---|---|---|---|
 | 00 | `00_submit_pipeline.sh` | login node | config, `samples.txt` | SLURM jobs | seconds |
 | 01 | `01_build_manifest.sh` | login node | `READ_DIR` | `manifest.tsv`, `samples.txt` | seconds |
-| 02 | `02_qc_assembly.sh` | array | raw FASTQs | `fastp/`, `qcreads/`, `microbecensus/`, `metaphlan/`, `assemblies/` | 4–48 h / sample |
+| 02 | `02_qc_assembly.sh` | array | raw FASTQs | `fastp/`, `qcreads/` (+ `qcreads/dedup/`), `microbecensus/`, `metaphlan/`, `assemblies/` | 4–48 h / sample |
 | 03 | `03_binning.sh` | array | assembly, QC reads | `assemblies/rehead/`, `metabat2/<S>/bins/`, `checkm2/<S>/` | 1–6 h / sample |
 | 04 | `04_prep_drep.sh` | single | bins, CheckM2 reports | `drep/all_bins/`, `genome_info.csv`, `genome_paths.txt` | < 1 h |
 | 05 | `05_drep.sh` | single | staged bins | `drep/output/dereplicated_genomes/` | 2–48 h |
@@ -100,8 +103,9 @@ mettannotator CDS count and the number of samples where MetaPop detected the MAG
 manifest.tsv, samples.txt
 logs/<module>/slurm_<job>.{out,err}, logs/<module>/<sample>.log
 checkpoints/<module>/<sample|_all>.done
-fastp/                  per-library JSON/HTML reports
-qcreads/                <S>_L<i>_R{1,2}.fastq.gz (post fastp + host removal)
+fastp/                  <S>_L<i>.{json,html} (QC pass), <S>.dedup.{json,html} (dedup pass)
+qcreads/                <S>_L<i>_R{1,2}.fastq.gz: trimmed + host-removed, not deduplicated
+qcreads/dedup/          <S>_R{1,2}.fastq.gz: lane-merged and deduplicated; the assembly input
 microbecensus/          <S>.microbecensus
 metaphlan/              <S>.metaphlan
 assemblies/             <S>_scaffolds.fasta, rehead/, assembly_stats/<S>/ (QUAST)
@@ -180,7 +184,7 @@ Each defect from the prior pipeline (`docs/legacy/original_pipeline.md`) and its
 | 12 | Config via `cd "$(dirname "$0")"` | Resolved from `BASH_SOURCE`; `MAG_SLURM_ROOT` exported to jobs |
 | 13 | `--no-capture-output` unsupported | Capability probe in `run_in_env` |
 | 14 | `mktemp -p /scratch/${USER}` | `SCRATCH_ROOT` from config |
-| 15 | `fastp --dedup` distorts coverage | `FASTP_DEDUP=false` default |
+| 15 | `fastp --dedup` distorts coverage | Dedup only in a second fastp pass whose reads feed assembly alone |
 | 16 | MicrobeCensus on trimmed reads | `MICROBECENSUS_INPUT=raw` default |
 | 17 | No rerun safety | Checkpoint sentinels |
 

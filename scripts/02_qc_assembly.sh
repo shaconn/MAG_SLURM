@@ -6,11 +6,21 @@ set -Eeuo pipefail
 
 # ----------------------------------------------------------------------------
 # 02_qc_assembly.sh  (ARRAY: one task per line of SAMPLE_LIST)
-# fastp -> host removal -> MicrobeCensus -> MetaPhlAn -> metaSPAdes -> QUAST
+# fastp -> host removal -> MicrobeCensus -> MetaPhlAn -> fastp dedup ->
+# metaSPAdes -> QUAST
+#
+# fastp runs twice, producing two read sets from one host-removal pass:
+#   QC reads     trimmed + host-removed, NOT deduplicated. Used for profiling
+#                (MicrobeCensus, MetaPhlAn) and everything coverage-based
+#                downstream (03 binning depths, 12 MetaPop remapping).
+#   dedup reads  the QC reads after a second, dedup-only fastp pass on the
+#                lane-merged pair. Used only for assembly.
 #
 # Outputs:
-#   fastp/<S>_L<i>.{json,html}
+#   fastp/<S>_L<i>.{json,html}                  QC pass, per library
+#   fastp/<S>.dedup.{json,html}                 dedup pass
 #   qcreads/<S>_L<i>_R{1,2}.fastq.gz            (when KEEP_QC_READS=true)
+#   qcreads/dedup/<S>_R{1,2}.fastq.gz           (when KEEP_QC_READS=true)
 #   microbecensus/<S>.microbecensus
 #   metaphlan/<S>.metaphlan
 #   assemblies/<S>_scaffolds.fasta
@@ -56,10 +66,10 @@ done
 log_info "staged ${LIB_COUNT} librar$( [[ "${LIB_COUNT}" -eq 1 ]] && echo y || echo ies)"
 
 # ----------------------------------------------------------------------------
-# 2. fastp
+# 2. fastp, pass 1: trimming and filtering (no dedup)
 # ----------------------------------------------------------------------------
 if is_true "${RUN_FASTP}"; then
-  log_info "fastp"
+  log_info "fastp pass 1 (QC)"
   mkdir -p "${WORKDIR}/fastp" "${OUT_DIR}/fastp"
   FASTP_OPTS=(--detect_adapter_for_pe --cut_front --cut_tail
     --cut_window_size "${FASTP_CUT_WINDOW_SIZE}"
@@ -68,11 +78,9 @@ if is_true "${RUN_FASTP}"; then
   if is_true "${FASTP_TRIM_POLY_G}"; then
     FASTP_OPTS+=(--trim_poly_g)
   fi
-  # Off by default: dedup distorts MetaBAT2/MetaPop coverage (legacy defect #15).
-  if is_true "${FASTP_DEDUP}"; then
-    log_warn "FASTP_DEDUP=true: exact duplicates removed; coverage-based steps are affected"
-    FASTP_OPTS+=(--dedup)
-  fi
+  # No --dedup here: duplicate removal would distort the coverage that
+  # MetaBAT2 and MetaPop use (legacy defect #15). Dedup is pass 2, for
+  # assembly only.
   for (( i = 1; i <= LIB_COUNT; i++ )); do
     out1="${WORKDIR}/fastp/${SAMPLE}_L${i}_R1.fastq.gz"
     out2="${WORKDIR}/fastp/${SAMPLE}_L${i}_R2.fastq.gz"
@@ -185,20 +193,53 @@ if is_true "${RUN_METAPHLAN}"; then
 fi
 
 # ----------------------------------------------------------------------------
-# 8. metaSPAdes
+# 8. fastp, pass 2: deduplication for assembly
+# ----------------------------------------------------------------------------
+# Runs on the lane-merged QC pair so duplicates shared across lanes of the same
+# library are also removed. Every other fastp operation is disabled (-A
+# adapters, -G poly-G, -Q quality filter, -L length filter): pass 1 already
+# did them, and this pass must only drop duplicates.
+ASM_R1="${MERGED_R1}"
+ASM_R2="${MERGED_R2}"
+if is_true "${RUN_ASSEMBLY}" && is_true "${FASTP_DEDUP_ASSEMBLY}"; then
+  log_info "fastp pass 2 (dedup for assembly)"
+  mkdir -p "${WORKDIR}/dedup" "${OUT_DIR}/fastp"
+  ASM_R1="${WORKDIR}/dedup/${SAMPLE}_R1.fastq.gz"
+  ASM_R2="${WORKDIR}/dedup/${SAMPLE}_R2.fastq.gz"
+  run_in_env fastp fastp \
+    --in1 "${MERGED_R1}" --in2 "${MERGED_R2}" \
+    --out1 "${ASM_R1}" --out2 "${ASM_R2}" \
+    --dedup \
+    -A -G -Q -L \
+    --json "${OUT_DIR}/fastp/${SAMPLE}.dedup.json" \
+    --html "${OUT_DIR}/fastp/${SAMPLE}.dedup.html" \
+    --thread "${THREADS}"
+  require_file "${ASM_R1}" "${ASM_R2}"
+  if is_true "${KEEP_QC_READS}"; then
+    mkdir -p "${QC_READ_DIR}/dedup"
+    cp "${ASM_R1}" "${QC_READ_DIR}/dedup/${SAMPLE}_R1.fastq.gz"
+    cp "${ASM_R2}" "${QC_READ_DIR}/dedup/${SAMPLE}_R2.fastq.gz"
+    log_info "deduplicated reads copied to ${QC_READ_DIR}/dedup"
+  fi
+elif is_true "${RUN_ASSEMBLY}"; then
+  log_info "FASTP_DEDUP_ASSEMBLY=false: assembling the non-deduplicated QC reads"
+fi
+
+# ----------------------------------------------------------------------------
+# 9. metaSPAdes
 # ----------------------------------------------------------------------------
 ASSEMBLY="${OUT_DIR}/assemblies/${SAMPLE}_scaffolds.fasta"
 if is_true "${RUN_ASSEMBLY}"; then
-  log_info "metaSPAdes (${THREADS} threads, ${MEM_GB} GB)"
+  log_info "metaSPAdes on $( [[ "${ASM_R1}" == "${MERGED_R1}" ]] && echo "QC" || echo "deduplicated") reads (${THREADS} threads, ${MEM_GB} GB)"
   mkdir -p "${WORKDIR}/spades_tmp" "${OUT_DIR}/assemblies"
   # metaSPAdes accepts exactly one paired-end library ("--pe-1 1 ... --pe-1 2"
   # is rejected in --meta mode). Two lanes of one sample are the same library,
-  # so the lane-merged pair from step 5 is passed in both cases.
+  # so a single lane-merged pair is passed in both cases.
   run_in_env spades metaspades.py \
     --threads "${THREADS}" \
     --memory "${MEM_GB}" \
     --tmp-dir "${WORKDIR}/spades_tmp" \
-    -1 "${MERGED_R1}" -2 "${MERGED_R2}" \
+    -1 "${ASM_R1}" -2 "${ASM_R2}" \
     -o "${WORKDIR}/spades"
   require_file "${WORKDIR}/spades/scaffolds.fasta"
   cp "${WORKDIR}/spades/scaffolds.fasta" "${ASSEMBLY}"
@@ -206,7 +247,7 @@ if is_true "${RUN_ASSEMBLY}"; then
 fi
 
 # ----------------------------------------------------------------------------
-# 9. QUAST
+# 10. QUAST
 # ----------------------------------------------------------------------------
 if is_true "${RUN_QUAST}"; then
   require_file "${ASSEMBLY}"
@@ -231,6 +272,7 @@ summary_block "02_qc_assembly: ${SAMPLE}" \
   "Libraries" "${LIB_COUNT}" \
   "fastp / host removal" "${RUN_FASTP} / ${RUN_HOST_REMOVAL} (${HOST_SPECIES})" \
   "QC reads kept" "${KEEP_QC_READS}" \
+  "Assembly reads deduplicated" "$( is_true "${RUN_ASSEMBLY}" && echo "${FASTP_DEDUP_ASSEMBLY}" || echo "n/a")" \
   "MicrobeCensus / MetaPhlAn" "${RUN_MICROBECENSUS} / ${RUN_METAPHLAN}" \
   "Assembly" "${ASSEMBLY}" \
   "Scaffolds" "${N_CONTIGS}"

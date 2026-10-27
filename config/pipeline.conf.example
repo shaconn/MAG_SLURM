@@ -83,11 +83,12 @@ FASTP_CUT_WINDOW_SIZE=4
 FASTP_CUT_MEAN_QUALITY=20
 FASTP_LENGTH_REQUIRED=60
 FASTP_TRIM_POLY_G=true
-# NOTE: exact-duplicate removal distorts the coverage depth used by MetaBAT2 for
-# binning and by MetaPop for depth/breadth and microdiversity. The legacy
-# pipeline enabled it. Default is now false. Enable only if you understand the
-# downstream effect.
-FASTP_DEDUP=false
+# fastp runs twice. Pass 1 (above settings, never deduplicated) produces the QC
+# reads used for profiling and for every coverage-based step: MetaBAT2 depths
+# and MetaPop depth/breadth/microdiversity, which duplicate removal would
+# distort. Pass 2 deduplicates those QC reads to make a separate set used only
+# for metaSPAdes. Set false to assemble the non-deduplicated QC reads instead.
+FASTP_DEDUP_ASSEMBLY=true
 
 # --- MicrobeCensus ----------------------------------------------------------
 # raw | qc  -- average genome size estimation is read-length sensitive and is
