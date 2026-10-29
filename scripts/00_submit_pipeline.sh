@@ -11,7 +11,7 @@ set -Eeuo pipefail
 #   scripts/00_submit_pipeline.sh [--dry-run] [--from NN] [--force] [--config FILE]
 #
 #   --dry-run      print the resolved DAG and sbatch commands; submit nothing
-#   --from NN      start at module NN (02-13); earlier modules are not submitted
+#   --from NN      start at module NN (02-14); earlier modules are not submitted
 #   --force        delete the checkpoints of every module being submitted, so
 #                  completed samples/modules are recomputed
 #   --config FILE  use FILE instead of config/pipeline.conf
@@ -20,6 +20,7 @@ set -Eeuo pipefail
 #   02 (array) -> 03 (array) -> 04 -> 05 -+-> 06 -> 09 -> 10
 #                                         +-> 07 -> 08
 #                                         +-> 11 -> 12 (array) -> 13
+#                                         +-> 14 (optional, iPHoP de novo trees)
 # ----------------------------------------------------------------------------
 
 MAG_SLURM_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -43,9 +44,9 @@ while [[ $# -gt 0 ]]; do
   case "$1" in
     --dry-run) DRY_RUN=true; shift ;;
     --from)
-      [[ "${2:-}" =~ ^[0-9]+$ ]] || die "--from needs a module number (02-13)"
+      [[ "${2:-}" =~ ^[0-9]+$ ]] || die "--from needs a module number (02-14)"
       FROM=$(( 10#$2 ))
-      [[ "${FROM}" -ge 2 && "${FROM}" -le 13 ]] || die "--from must be between 02 and 13"
+      [[ "${FROM}" -ge 2 && "${FROM}" -le 14 ]] || die "--from must be between 02 and 14"
       shift 2
       ;;
     --force) FORCE=true; shift ;;
@@ -67,7 +68,7 @@ fi
 # ----------------------------------------------------------------------------
 # Module registry
 # ----------------------------------------------------------------------------
-ALL_MODULES="02 03 04 05 06 07 08 09 10 11 12 13"
+ALL_MODULES="02 03 04 05 06 07 08 09 10 11 12 13 14"
 
 mod_name() {
   case "$1" in
@@ -83,6 +84,7 @@ mod_name() {
     11) echo "11_metapop_prep" ;;
     12) echo "12_metapop_remap" ;;
     13) echo "13_metapop_run" ;;
+    14) echo "14_gtdbtk_de_novo" ;;
   esac
 }
 
@@ -100,6 +102,7 @@ mod_resource() {
     11) echo "METAPOP_PREP" ;;
     12) echo "METAPOP_REMAP" ;;
     13) echo "METAPOP_RUN" ;;
+    14) echo "GTDBTK_DE_NOVO" ;;
   esac
 }
 
@@ -116,7 +119,7 @@ mod_parents() {
     03) echo "02" ;;
     04) echo "03" ;;
     05) echo "04" ;;
-    06 | 07 | 11) echo "05" ;;
+    06 | 07 | 11 | 14) echo "05" ;;
     08) echo "07" ;;
     09) echo "06" ;;
     10) echo "09" ;;
@@ -150,6 +153,7 @@ mod_skip_reason() {
     07 | 08) annotation_has dram || echo "ANNOTATION_MODE=${ANNOTATION_MODE}" ;;
     09 | 10) annotation_has mettannotator || echo "ANNOTATION_MODE=${ANNOTATION_MODE}" ;;
     11 | 12 | 13) is_true "${RUN_METAPOP}" || echo "RUN_METAPOP=false" ;;
+    14) is_true "${RUN_IPHOP_DE_NOVO}" || echo "RUN_IPHOP_DE_NOVO=false" ;;
   esac
 }
 
@@ -317,6 +321,7 @@ echo "Config          : ${MAG_SLURM_CONFIG}"
 echo "Samples         : ${N_SAMPLES}"
 echo "Annotation mode : ${ANNOTATION_MODE}"
 echo "MetaPop         : ${RUN_METAPOP}"
+echo "iPHoP de novo   : ${RUN_IPHOP_DE_NOVO}"
 echo ""
 echo "Resolved DAG:"
 printf '%s' "${DAG_LINES}"

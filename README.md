@@ -15,7 +15,8 @@ and every sample gets its own log. A sibling of `MVP_SLURM`.
 ```
 02 qc_assembly (array) ─► 03 binning (array) ─► 04 prep_drep ─► 05 drep ─┬─► 06 gtdbtk ─► 09 mettannotator_prep ─► 10 mettannotator
                                                                           ├─► 07 dram_annotate ─► 08 dram_distill
-                                                                          └─► 11 metapop_prep ─► 12 metapop_remap (array) ─► 13 metapop_run
+                                                                          ├─► 11 metapop_prep ─► 12 metapop_remap (array) ─► 13 metapop_run
+                                                                          └─► 14 gtdbtk_de_novo (optional; iPHoP host database)
 ```
 
 ## Quickstart
@@ -70,6 +71,8 @@ Every job sources it.
 | `DREP_*` | dRep ANI thresholds, quality filter, greedy clustering |
 | `METTANNOTATOR_*`, `NXF_SINGULARITY_CACHEDIR`, `*_MODULE` | mettannotator revision, DBs, container cache, modules to load |
 | `METAPOP_*` | MetaPop filters; `METAPOP_DELETE_SAM=false` keeps a SAM per sample |
+| `RUN_IPHOP_DE_NOVO` | `false` (default). `true` adds module 14: GTDB-Tk `de_novo_wf` trees for `iphop add_to_db` |
+| `IPHOP_BAC_OUTGROUP`, `IPHOP_AR_OUTGROUP` | `de_novo_wf` outgroups (iPHoP's: `p__Patescibacteriota`, `p__Altiarchaeota`) |
 
 ## Modules
 
@@ -89,6 +92,7 @@ Every job sources it.
 | 11 | `11_metapop_prep.sh` | single | representatives | `metapop/reference/`, `combined_mags.fasta`, `idx/` | < 2 h |
 | 12 | `12_metapop_remap.sh` | array | QC reads, index | `metapop/bams/`, `metapop/norm/` | 1–4 h / sample |
 | 13 | `13_metapop_run.sh` | single | BAMs, norm, reference | `metapop/norm.tsv`, `metapop/output/` | 4–24 h |
+| 14 | `14_gtdbtk_de_novo.sh` | single, optional | representatives | `gtdbtk/iphop_de_novo/` | 1–7 days |
 
 \*Depends on depth, sample count and the cluster; these figures are rough guides.
 
@@ -96,6 +100,24 @@ Once the run finishes, `bin/summarize_run.py "${OUT_DIR}"` writes `mag_summary.t
 with one row per representative. Each row has the dRep cluster, CheckM2
 completeness, contamination, N50 and size, the GTDB-Tk classification, the
 mettannotator CDS count and the number of samples where MetaPop detected the MAG.
+
+### Adding MAGs to iPHoP (module 14)
+
+iPHoP's `add_to_db` needs GTDB-Tk `de_novo_wf` output, run once for bacteria and once
+for archaea into the same folder. `classify_wf` output, with or without `--full_tree`,
+does not work. Set `RUN_IPHOP_DE_NOVO=true` and module 14 builds both trees from the
+dRep representatives. It runs alongside 06 and does not change the pipeline's
+taxonomy, which still comes from `classify_wf`. Then, in your iPHoP environment:
+
+```bash
+iphop add_to_db --fna_dir "${OUT_DIR}/drep/output/dereplicated_genomes" \
+  --gtdb_dir "${OUT_DIR}/gtdbtk/iphop_de_novo" \
+  --out_dir <new_db_name> --db_dir /full/path/to/iphop_db/<release>/
+```
+
+If you have no archaeal MAGs, the archaeal run may fail. Module 14 logs a warning
+instead of failing, but `add_to_db` may then stop with an IndexError. iPHoP's docs
+suggest adding a few archaeal genomes, such as its test set.
 
 ## Output layout (`OUT_DIR`)
 
@@ -112,7 +134,7 @@ assemblies/             <S>_scaffolds.fasta, rehead/, assembly_stats/<S>/ (QUAST
 metabat2/<S>/           depth.txt, bins/bin.<N>.fa
 checkm2/<S>/            quality_report.tsv
 drep/                   all_bins/, genome_info.csv, genome_paths.txt, output/
-gtdbtk/                 classify/gtdbtk.{bac120,ar53}.summary.tsv
+gtdbtk/                 classify/gtdbtk.{bac120,ar53}.summary.tsv; iphop_de_novo/ (module 14)
 dram/                   annotation/, distillation/
 mettannotator/          samplesheet.csv, taxid_resolution_report.tsv, results/, work/
 metapop/                reference/, combined_mags.fasta, idx/, bams/, norm/, norm.tsv, output/
@@ -225,6 +247,8 @@ Each defect from the prior pipeline (`docs/legacy/original_pipeline.md`) and its
 - **DRAM**: Shaffer M, et al. DRAM for distilling microbial metabolism to automate the curation of microbiome function. *Nucleic Acids Res* 48(16):8883–8900 (2020).
 - **mettannotator**: Gurbich TA, Beracochea M, De Silva NH, Finn RD. mettannotator: a comprehensive and scalable Nextflow annotation pipeline for prokaryotic assemblies. *Bioinformatics* 41(2):btaf037 (2025).
 - **Nextflow**: Di Tommaso P, et al. Nextflow enables reproducible computational workflows. *Nat Biotechnol* 35:316–319 (2017).
+- **iPHoP**: Roux S, et al. iPHoP: An integrated machine learning framework to maximize host prediction for metagenome-derived viruses of archaea and bacteria. *PLoS Biol* 21(4):e3002083 (2023).
+- **FastTree 2** (GTDB-Tk de novo trees): Price MN, Dehal PS, Arkin AP. FastTree 2 – approximately maximum-likelihood trees for large alignments. *PLoS ONE* 5(3):e9490 (2010).
 - **MetaPop**: Gregory AC, et al. MetaPop: a pipeline for macro- and microdiversity analyses and visualization of microbial and viral metagenome-derived populations. *Microbiome* 10:49 (2022).
 - **MIMAG**: Bowers RM, et al. Minimum information about a single amplified genome (MISAG) and a metagenome-assembled genome (MIMAG) of bacteria and archaea. *Nat Biotechnol* 35:725–731 (2017).
 

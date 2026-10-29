@@ -51,6 +51,7 @@ CPUS_METTANNOTATOR=8;  MEM_METTANNOTATOR="32G"; TIME_METTANNOTATOR="120:00:00"
 CPUS_METAPOP_PREP=8;   MEM_METAPOP_PREP="32G";  TIME_METAPOP_PREP="04:00:00"
 CPUS_METAPOP_REMAP=24; MEM_METAPOP_REMAP="80G"; TIME_METAPOP_REMAP="12:00:00"
 CPUS_METAPOP_RUN=24;   MEM_METAPOP_RUN="200G";  TIME_METAPOP_RUN="24:00:00"
+CPUS_GTDBTK_DE_NOVO=32; MEM_GTDBTK_DE_NOVO="500G"; TIME_GTDBTK_DE_NOVO="7-00:00:00"
 
 # --- Module toggles ---------------------------------------------------------
 RUN_FASTP=true
@@ -63,6 +64,9 @@ RUN_BINNING=true
 RUN_DREP=true
 RUN_GTDBTK=true
 RUN_METAPOP=true
+# GTDB-Tk de_novo_wf trees for iPHoP's add_to_db (module 14). Off by default:
+# de novo trees over all GTDB references are slow (days) and memory-hungry.
+RUN_IPHOP_DE_NOVO=false
 
 # Functional annotation: dram | mettannotator | both | none
 ANNOTATION_MODE="both"
@@ -126,3 +130,8 @@ METAPOP_ID_MIN=95
 METAPOP_MIN_COV=20
 METAPOP_MIN_DEP=10
 METAPOP_DELETE_SAM=true
+
+# --- iPHoP de novo trees ----------------------------------------------------
+# Outgroups from the iPHoP "Adding bacterial and/or archaeal MAGs" instructions.
+IPHOP_BAC_OUTGROUP="p__Patescibacteriota"
+IPHOP_AR_OUTGROUP="p__Altiarchaeota"
