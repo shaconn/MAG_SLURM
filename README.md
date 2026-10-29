@@ -25,7 +25,7 @@ and every sample gets its own log. A sibling of `MVP_SLURM`.
 git clone <repo-url> MAG_SLURM && cd MAG_SLURM
 cp config/pipeline.conf.example config/pipeline.conf   # edit paths, account, partition
 setup/install_envs.sh                                   # conda envs from setup/envs/*.yml
-setup/download_databases.sh --submit                    # all DBs under DB_ROOT (or --only NAME)
+setup/download_databases.sh --submit                    # one sized SLURM job per DB (or --only NAME)
 setup/build_host_indexes.sh                             # submits itself; human/mouse/phiX bowtie2 indexes
 scripts/01_build_manifest.sh                            # READ_DIR -> manifest.tsv + samples.txt
 scripts/00_submit_pipeline.sh --dry-run                 # inspect the DAG
@@ -39,6 +39,29 @@ entry point: put them (or symlinks to them) in `READ_DIR`. The default naming is
 `<Sample>_L<lane>_R{1,2}.fastq.gz`. For other layouts use
 `01_build_manifest.sh --pattern`, e.g. `--pattern '*_{1,2}.fastq.gz'` for
 `fasterq-dump` output.
+
+### Database setup jobs
+
+`download_databases.sh --submit` submits one SLURM job per database, each sized for
+that database. Logs go to `logs/setup/download_db_<name>_<jobid>.*`.
+
+| Database | CPUs / RAM / time | Why |
+|---|---|---|
+| `checkm2` | 4 / 16G / 6 h | ~3 GB download plus `checkm2 testrun` |
+| `gtdbtk` | 2 / 16G / 72 h | ~110 GB download and extract; needs ~2× that disk free while extracting |
+| `dram` | 16 / 512G / 72 h | DRAM's README: ~512 GB RAM with UniRef90. With `--skip-uniref`: 128G |
+| `metaphlan` | 16 / 64G / 24 h | ~20 GB download and database build |
+| `mettannotator` | 16 / 128G / 72 h | warm-up run; its tasks request up to 128 GB / 16 CPUs |
+
+To skip a database, run the others by name. For example, without DRAM and mettannotator:
+
+```bash
+for db in checkm2 gtdbtk metaphlan; do setup/download_databases.sh --only "$db" --submit; done
+```
+
+For KEGG in DRAM, `export DRAM_KEGG_LOC=/full/path/to/kegg.pep` before submitting.
+To leave DRAM out of the pipeline as well, set `ANNOTATION_MODE="mettannotator"`
+(or `"none"`).
 
 ## Configuration reference
 
@@ -222,7 +245,11 @@ Each defect from the prior pipeline (`docs/legacy/original_pipeline.md`) and its
 - **metaSPAdes takes one paired-end library.** Two-lane samples are lane-merged
   before assembly.
 - **mettannotator runs inside one allocation** (`CPUS_METTANNOTATOR`,
-  `MEM_METTANNOTATOR`) with Nextflow's local executor.
+  `MEM_METTANNOTATOR`) with Nextflow's local executor. Its tasks request up to
+  128 GB / 16 CPUs (UniFIRE 75 GB, eggNOG-mapper 50 GB), so the defaults are
+  16 CPUs / 128G. Nextflow checks requests against the node, not the SLURM
+  allocation, so a smaller allocation fails by running out of memory, not with a
+  clear error.
 - **DRAM taxonomy embedding.** 07 runs in parallel with GTDB-Tk, so GTDB taxonomy
   is embedded in DRAM output only when a previous GTDB-Tk result already exists.
 - **TaxIds for mettannotator** are resolved from GTDB metadata (species) and the NCBI

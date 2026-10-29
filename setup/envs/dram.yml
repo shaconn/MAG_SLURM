@@ -5,3 +5,5 @@ channels:
   - bioconda
 dependencies:
   - dram>=1.5,<1.6
+  # DRAM 1.5 imports pkg_resources, which newer setuptools releases removed.
+  - setuptools<81

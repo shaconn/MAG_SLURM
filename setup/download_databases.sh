@@ -11,15 +11,20 @@ set -Eeuo pipefail
 #
 #   --only NAME     one of: checkm2 gtdbtk dram metaphlan mettannotator
 #   --skip-uniref   DRAM without UniRef90 (see note below)
-#   --submit        run as a SLURM job instead of in this shell (recommended:
-#                   DRAM and mettannotator take many hours and real CPU)
+#   --submit        submit one SLURM job per database instead of running in
+#                   this shell, each sized for that database (table below)
 #
-#   Database        Subdirectory        Approx. size
-#   CheckM2         checkm2/            ~3 GB
-#   GTDB-Tk + Mash  gtdbtk/             ~110 GB  (+ GTDB metadata, NCBI taxdump)
-#   DRAM            dram/               ~500 GB
-#   MetaPhlAn       metaphlan/          ~20 GB
-#   mettannotator   mettannotator/      ~182 GB
+#   Database        Subdirectory     Approx. size   --submit job (CPUs / RAM / time)
+#   CheckM2         checkm2/         ~3 GB          4 / 16G / 6 h
+#   GTDB-Tk + Mash  gtdbtk/          ~110 GB        2 / 16G / 72 h  (download + extract)
+#                                    (+ GTDB metadata, NCBI taxdump)
+#   DRAM            dram/            ~500 GB        16 / 512G / 72 h  (128G with --skip-uniref)
+#   MetaPhlAn       metaphlan/       ~20 GB         16 / 64G / 24 h
+#   mettannotator   mettannotator/   ~182 GB        16 / 128G / 72 h
+#
+# DRAM's README gives ~512 GB RAM for setup with UniRef90, and ~64 GB (no KEGG)
+# or ~128 GB (with KEGG) with --skip_uniref. mettannotator's own tasks request
+# up to 128 GB / 16 CPUs, and its warm-up run executes inside the job.
 #
 # Environment overrides: GTDB_RELEASE (default 226), GTDB_MIRROR,
 # DRAM_KEGG_LOC (path to a licensed KEGG peptide FASTA; KEGG is optional).
@@ -37,7 +42,6 @@ ALL_DBS="checkm2 gtdbtk dram metaphlan mettannotator"
 ONLY=""
 SKIP_UNIREF=false
 SUBMIT=false
-ORIG_ARGS=("$@")
 while [[ $# -gt 0 ]]; do
   case "$1" in
     --only) ONLY="${2:?--only needs a value}"; shift 2 ;;
@@ -45,7 +49,7 @@ while [[ $# -gt 0 ]]; do
     --submit) SUBMIT=true; shift ;;
     --local) shift ;;
     --config) MAG_SLURM_CONFIG="${2:?--config needs a value}"; export MAG_SLURM_CONFIG; shift 2 ;;
-    -h | --help) sed -n '5,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+    -h | --help) sed -n '6,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
     *) die "unknown argument: $1" ;;
   esac
 done
@@ -56,14 +60,36 @@ fi
 load_config
 mkdir -p "${DB_ROOT}"
 
+# db_resources <name> -> "cpus mem time" for that database's --submit job.
+db_resources() {
+  case "$1" in
+    checkm2) echo "4 16G 06:00:00" ;;
+    gtdbtk) echo "2 16G 72:00:00" ;;
+    dram)
+      if is_true "${SKIP_UNIREF}"; then
+        echo "16 128G 72:00:00"
+      else
+        echo "16 512G 72:00:00"
+      fi
+      ;;
+    metaphlan) echo "16 64G 24:00:00" ;;
+    mettannotator) echo "16 128G 72:00:00" ;;
+  esac
+}
+
 if is_true "${SUBMIT}"; then
-  pass=()
-  for a in "${ORIG_ARGS[@]}"; do
-    if [[ "${a}" != "--submit" ]]; then
-      pass+=("${a}")
+  # One job per database, so each gets the resources it needs and a failure
+  # in one (e.g. DRAM) does not stop the others. The job re-reads the config
+  # through MAG_SLURM_CONFIG, which load_config exported.
+  for db in ${ONLY:-${ALL_DBS}}; do
+    read -r cpus mem time <<< "$(db_resources "${db}")"
+    extra=()
+    if [[ "${db}" == "dram" ]] && is_true "${SKIP_UNIREF}"; then
+      extra+=(--skip-uniref)
     fi
+    submit_self "${MAG_SLURM_ROOT}/setup/download_databases.sh" "download_db_${db}" \
+      "${cpus}" "${mem}" "${time}" --only "${db}" ${extra[@]+"${extra[@]}"}
   done
-  submit_self "${MAG_SLURM_ROOT}/setup/download_databases.sh" 16 64G 72:00:00 ${pass[@]+"${pass[@]}"}
   exit 0
 fi
 

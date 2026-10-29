@@ -602,18 +602,18 @@ verify_md5() {
   log_info "checksum OK: $(basename "${file}")"
 }
 
-# submit_self <script> <cpus> <mem> <time> <args...>
+# submit_self <script> <label> <cpus> <mem> <time> <args...>
 # Re-submits a setup script as a SLURM job (used for multi-hour builds that
 # must not run on a login node). The job runs the script with --local.
+# <label> names the job and its log files (logs/setup/<label>_<jobid>.*).
 submit_self() {
   local script="$1"
-  local cpus="$2"
-  local mem="$3"
-  local time="$4"
-  shift 4
+  local name="$2"
+  local cpus="$3"
+  local mem="$4"
+  local time="$5"
+  shift 5
   require_cmd sbatch
-  local name
-  name="$(basename "${script}" .sh)"
   mkdir -p "${LOG_DIR}/setup"
   local jid
   jid="$(sbatch --parsable \
@@ -628,7 +628,7 @@ submit_self() {
     --export=ALL \
     "${script}" --local "$@")"
   jid="${jid%%;*}"
-  log_info "submitted ${name} as job ${jid}; logs in ${LOG_DIR}/setup/"
+  log_info "submitted ${name} (${cpus} CPUs, ${mem}, ${time}) as job ${jid}; logs in ${LOG_DIR}/setup/"
 }
 
 # Loads an environment module if a name is configured. "" means the tool is

@@ -46,7 +46,7 @@ HOSTS="${DB_ROOT}/hosts"
 mkdir -p "${HOSTS}"
 
 if ! is_true "${LOCAL}" && [[ -z "${SLURM_JOB_ID:-}" ]]; then
-  submit_self "${MAG_SLURM_ROOT}/setup/build_host_indexes.sh" 16 64G 24:00:00 --species "${SPECIES}"
+  submit_self "${MAG_SLURM_ROOT}/setup/build_host_indexes.sh" build_host_indexes 16 64G 24:00:00 --species "${SPECIES}"
   exit 0
 fi
 
